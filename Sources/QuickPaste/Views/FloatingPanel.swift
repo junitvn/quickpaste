@@ -21,6 +21,9 @@ class FloatingPanel: NSPanel {
 
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
+        // Required for SwiftUI .onHover to work inside a nonactivatingPanel
+        acceptsMouseMovedEvents = true
+
         // Rounded corners
         if let contentView = contentView {
             contentView.wantsLayer = true

@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var newName = ""
     @State private var newCategory = ""
     @State private var newContent = ""
+    @State private var hoveredClipItemID: String? = nil
+    @State private var savedClipItemID: String? = nil
 
     var body: some View {
         TabView {
@@ -56,39 +58,100 @@ struct SettingsView: View {
             ScrollViewReader { proxy in
                 List {
                     ForEach(clipboardMonitor.history) { item in
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(item.content, forType: .string)
-                            clipboardMonitor.history.removeAll { $0.id == item.id }
-                            let moved = ClipboardItem(id: item.id, content: item.content)
-                            clipboardMonitor.history.insert(moved, at: 0)
-                            withAnimation {
-                                proxy.scrollTo(clipboardMonitor.history.first?.id, anchor: .top)
-                            }
-                        } label: {
-                            HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.preview)
-                                        .font(.system(size: 13, weight: .medium))
-                                    Text(item.content)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                        HStack(alignment: .top, spacing: 6) {
+                            // Left: tappable area to copy
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(item.content, forType: .string)
+                                clipboardMonitor.history.removeAll { $0.id == item.id }
+                                let moved = ClipboardItem(id: item.id, content: item.content)
+                                clipboardMonitor.history.insert(moved, at: 0)
+                                withAnimation {
+                                    proxy.scrollTo(clipboardMonitor.history.first?.id, anchor: .top)
                                 }
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    Text(item.timeAgo(lang: settings.language))
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
+                            } label: {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.preview)
+                                            .font(.system(size: 13, weight: .medium))
+                                        Text(item.content)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            // Right: action icons
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text(item.timeAgo(lang: settings.language))
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+
+                                HStack(spacing: 2) {
+                                    // Save to Snippets
+                                    Button {
+                                        let snippet = Snippet(name: item.preview, category: "Clipboard", content: item.content)
+                                        settings.addSnippet(snippet)
+                                        savedClipItemID = item.id + "_snippet"
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                            if savedClipItemID == item.id + "_snippet" { savedClipItemID = nil }
+                                        }
+                                    } label: {
+                                        Image(systemName: savedClipItemID == item.id + "_snippet" ? "checkmark.circle.fill" : "doc.on.clipboard")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(savedClipItemID == item.id + "_snippet" ? .green : .secondary)
+                                            .frame(width: 24, height: 24)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(tr("save_to_snippets", lang: settings.language))
+
+                                    // Save to Quick Actions
+                                    Button {
+                                        let qa = QuickAction(name: item.preview, icon: "⚡️", content: item.content)
+                                        settings.addQuickAction(qa)
+                                        savedClipItemID = item.id + "_qa"
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                            if savedClipItemID == item.id + "_qa" { savedClipItemID = nil }
+                                        }
+                                    } label: {
+                                        Image(systemName: savedClipItemID == item.id + "_qa" ? "checkmark.circle.fill" : "bolt.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(savedClipItemID == item.id + "_qa" ? .green : .secondary)
+                                            .frame(width: 24, height: 24)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(tr("save_to_qa", lang: settings.language))
+
                                     Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 24, height: 24)
+
+                                    Button {
+                                        clipboardMonitor.history.removeAll { $0.id == item.id }
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 24, height: 24)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(tr("delete", lang: settings.language))
                                 }
+                                .animation(.easeInOut(duration: 0.15), value: hoveredClipItemID == item.id)
                             }
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                         .padding(.vertical, 4)
+                        .onHover { hovering in
+                            hoveredClipItemID = hovering ? item.id : nil
+                        }
                     }
                 }
                 .onChange(of: clipboardMonitor.history.first?.id) { _ in
@@ -158,6 +221,19 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
+
+                        Button {
+                            if let index = settings.quickActions.firstIndex(where: { $0.id == action.id }) {
+                                settings.removeQuickAction(at: index)
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help(tr("delete", lang: settings.language))
                     }
                     .padding(.vertical, 4)
                 }
@@ -273,11 +349,6 @@ struct SettingsView: View {
                     Label(tr("add", lang: settings.language), systemImage: "plus")
                 }
 
-                Button {
-                    settings.resetToDefaults()
-                } label: {
-                    Label(tr("reset", lang: settings.language), systemImage: "arrow.counterclockwise")
-                }
             }
             .padding()
 
@@ -354,6 +425,19 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+
+            Button {
+                if let index = settings.snippets.firstIndex(where: { $0.id == snippet.id }) {
+                    settings.removeSnippet(at: index)
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .help(tr("delete", lang: settings.language))
         }
         .padding(.vertical, 4)
     }

@@ -11,7 +11,7 @@ class Localization {
     static let shared = Localization()
 
     private let dictionary: [String: [AppLanguage: String]] = [
-        "menu_open": [.vi: "Mở", .en: "Open QuickPaste"],
+        "menu_open": [.vi: "Mở", .en: "Open"],
         "menu_settings": [.vi: "⚙️ Cài đặt…", .en: "⚙️ Settings…"],
         "menu_quit": [.vi: "Thoát", .en: "Quit"],
 
@@ -61,6 +61,10 @@ class Localization {
         "settings": [.vi: "Cài đặt", .en: "Settings"],
         "error_no_display": [.vi: "Vui lòng bật hiển thị Snippets hoặc Clipboard", .en: "Please enable Snippets or Clipboard"],
         "clear_clipboard": [.vi: "Xoá lịch sử", .en: "Clear History"],
+        "save_to_snippets": [.vi: "Lưu vào Snippets", .en: "Save to Snippets"],
+        "save_to_qa": [.vi: "Lưu vào Quick Actions", .en: "Save to Quick Actions"],
+        "delete": [.vi: "Xoá", .en: "Delete"],
+        "close": [.vi: "Đóng", .en: "Close"],
 
         "time_just_now": [.vi: "vừa xong", .en: "just now"],
         "time_minutes_ago": [.vi: "%d phút trước", .en: "%d min ago"],

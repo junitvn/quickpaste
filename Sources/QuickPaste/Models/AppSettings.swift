@@ -44,7 +44,8 @@ class AppSettings: ObservableObject {
         if let langString = UserDefaults.standard.string(forKey: languageKey), let lang = AppLanguage(rawValue: langString) {
             self.language = lang
         } else {
-            self.language = .vi // Default to Vietnamese
+            let preferredLang = Locale.preferredLanguages.first ?? "en"
+            self.language = preferredLang.hasPrefix("vi") ? .vi : .en
         }
 
         // Load max clipboard history
@@ -84,19 +85,7 @@ class AppSettings: ObservableObject {
                 return decoded
             }
         }
-        return loadDefaultSnippets()
-    }
-
-    private func loadDefaultSnippets() -> [Snippet] {
-        guard let url = Bundle.module.url(forResource: "default_snippets", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let snippets = try? JSONDecoder().decode([Snippet].self, from: data) else {
-            return [
-                Snippet(name: "📧 Email", category: "Thông tin", content: "yourname@gmail.com"),
-                Snippet(name: "📱 SĐT", category: "Thông tin", content: "+84 123 456 789"),
-            ]
-        }
-        return snippets
+        return []
     }
 
     private func saveSnippets() {
@@ -120,10 +109,7 @@ class AppSettings: ObservableObject {
         }
     }
 
-    func resetToDefaults() {
-        snippets = loadDefaultSnippets()
-        quickActions = loadDefaultQuickActions()
-    }
+
 
     // MARK: - Quick Actions Persistence
 
@@ -133,16 +119,7 @@ class AppSettings: ObservableObject {
                 return decoded
             }
         }
-        return loadDefaultQuickActions()
-    }
-
-    private func loadDefaultQuickActions() -> [QuickAction] {
-        return [
-            QuickAction(name: "Vỗ tay", icon: "👏", content: "👏"),
-            QuickAction(name: "Cười", icon: "😂", content: "😂"),
-            QuickAction(name: "Tuyệt", icon: "👍", content: "👍"),
-            QuickAction(name: "Email", icon: "📧", content: "yourname@gmail.com")
-        ]
+        return []
     }
 
     private func saveQuickActions() {

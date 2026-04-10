@@ -11,6 +11,8 @@ struct UnifiedContentView: View {
     
     @State private var searchText = ""
     @State private var selectedItemID: String? = nil
+    @State private var hoveredItemID: String? = nil
+    @State private var savedItemID: String? = nil  // for momentary feedback
     
     // Focus state for search bar
     @FocusState private var isSearchFocused: Bool
@@ -34,20 +36,20 @@ struct UnifiedContentView: View {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 4) {
-                        
+
                         if settings.showSnippets {
                             snippetsSection
                         }
-                        
+
                         if settings.showSnippets && settings.showClipboard {
                             Divider()
                                 .padding(.vertical, 4)
                         }
-                        
+
                         if settings.showClipboard {
                             clipboardSection
                         }
-                        
+
                         if !settings.showSnippets && !settings.showClipboard {
                             Text(tr("error_no_display", lang: settings.language))
                                 .font(.system(size: 12))
@@ -59,6 +61,13 @@ struct UnifiedContentView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
+                }
+                .onNSView { nsView in
+                    if let scrollView = nsView.enclosingScrollView {
+                        scrollView.scrollerStyle = .overlay
+                        scrollView.hasVerticalScroller = true
+                        scrollView.verticalScroller?.controlSize = .mini
+                    }
                 }
                 .onAppear {
                     isSearchFocused = true // Always focus search on appear
@@ -189,22 +198,30 @@ struct UnifiedContentView: View {
         }
     }
     
-    private func handleAction(for item: UnifiedItem) {
-        // Copy to clipboard
-        PasteService.shared.copyToClipboard(item.content)
-        
-        // Remove from list
+    private func deleteItem(_ item: UnifiedItem) {
         if item.isSnippet {
-            if let index = settings.snippets.firstIndex(where: { "snippet_\($0.id)" == item.id }) {
+            let snippetId = String(item.id.dropFirst("snippet_".count))
+            if let index = settings.snippets.firstIndex(where: { $0.id == snippetId }) {
                 settings.removeSnippet(at: index)
             }
         } else {
+            let clipId = String(item.id.dropFirst("clip_".count))
+            clipboardMonitor.history.removeAll { $0.id == clipId }
+        }
+    }
+
+    private func handleAction(for item: UnifiedItem) {
+        if !item.isSnippet {
+            // Move clipboard item to top without deleting
             if let index = clipboardMonitor.history.firstIndex(where: { "clip_\($0.id)" == item.id }) {
-                clipboardMonitor.history.remove(at: index)
+                let existing = clipboardMonitor.history.remove(at: index)
+                clipboardMonitor.history.insert(existing, at: 0)
             }
         }
-        
-        onDismiss()
+        // Snippets: no list modification at all
+
+        // Dismiss and paste via Cmd+V into the previously focused app
+        onPaste(item.content)
     }
 
     // MARK: - Views
@@ -229,6 +246,7 @@ struct UnifiedContentView: View {
                 }
             }
             .padding(.horizontal, 12)
+            .padding(.trailing, 4)
             .padding(.bottom, 8)
         }
     }
@@ -289,59 +307,116 @@ struct UnifiedContentView: View {
     
     private func itemRow(_ item: UnifiedItem) -> some View {
         let isSelected = selectedItemID == item.id
-        
-        return HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isSelected ? .white : .primary)
-                    .lineLimit(1)
-                
-                if item.isSnippet {
-                    Text(item.subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.secondary)
-                        .lineLimit(1)
+        let isHovered = hoveredItemID == item.id
+        let showActions = !item.isSnippet && (isSelected || isHovered)
+
+        return HStack(alignment: .center, spacing: 4) {
+            // --- Left: tappable area to paste ---
+            Button {
+                selectedItemID = item.id
+                handleAction(for: item)
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.title)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(isSelected ? .white : .primary)
+                            .lineLimit(1)
+
+                        if item.isSnippet {
+                            Text(item.subtitle)
+                                .font(.system(size: 11))
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.secondary)
+                                .lineLimit(1)
+                        } else {
+                            Text(item.subtitle)
+                                .font(.system(size: 10))
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.gray.opacity(0.8))
+                        }
+                    }
+                    Spacer()
                 }
+                .contentShape(Rectangle())
             }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
+            .buttonStyle(.plain)
+
+            // --- Right: action icons ---
+            HStack(spacing: 2) {
                 if !item.isSnippet {
-                    Text(item.subtitle) // contains the timestamp (timeAgo)
-                        .font(.system(size: 10))
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.gray.opacity(0.8))
+                    // Save to Snippet
+                    Button {
+                        let snippet = Snippet(name: item.title, category: "Clipboard", content: item.content)
+                        settings.addSnippet(snippet)
+                        savedItemID = item.id + "_snippet"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            if savedItemID == item.id + "_snippet" { savedItemID = nil }
+                        }
+                    } label: {
+                        Image(systemName: savedItemID == item.id + "_snippet" ? "checkmark.circle.fill" : "doc.on.clipboard")
+                            .font(.system(size: 12))
+                            .foregroundColor(savedItemID == item.id + "_snippet"
+                                ? .green
+                                : (isSelected ? Color.white.opacity(0.85) : Color.gray))
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(tr("save_to_snippets", lang: settings.language))
+                    .opacity(showActions || savedItemID == item.id + "_snippet" ? 1 : 0)
+                    .allowsHitTesting(showActions)
+
+                    // Save to Quick Action
+                    Button {
+                        let qa = QuickAction(name: item.title, icon: "⚡️", content: item.content)
+                        settings.addQuickAction(qa)
+                        savedItemID = item.id + "_qa"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            if savedItemID == item.id + "_qa" { savedItemID = nil }
+                        }
+                    } label: {
+                        Image(systemName: savedItemID == item.id + "_qa" ? "checkmark.circle.fill" : "bolt.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(savedItemID == item.id + "_qa"
+                                ? .green
+                                : (isSelected ? Color.white.opacity(0.85) : Color.gray))
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(tr("save_to_qa", lang: settings.language))
+                    .opacity(showActions || savedItemID == item.id + "_qa" ? 1 : 0)
+                    .allowsHitTesting(showActions)
                 }
-                
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 11))
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.gray)
+
+                // Delete
+                Button {
+                    deleteItem(item)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(isSelected ? Color.white.opacity(0.7) : Color.gray)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(tr("delete", lang: settings.language))
+                .opacity(isSelected || isHovered ? 1 : 0)
+                .allowsHitTesting(isSelected || isHovered)
             }
+            .animation(.easeInOut(duration: 0.15), value: showActions)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentColor : Color.clear)
+                .fill(isSelected ? Color.accentColor : (isHovered ? Color.primary.opacity(0.08) : Color.clear))
         )
-        // Add hover effect if not selected
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.primary.opacity(0.001))
-                .onHover { hovering in
-                    if hovering && selectedItemID != item.id {
-                        // Optional hover functionality
-                    }
-                }
-        )
-        .onTapGesture {
-            selectedItemID = item.id
-            handleAction(for: item)
+        .onHover { hovering in
+            hoveredItemID = hovering ? item.id : nil
         }
         .id(item.id)
     }
+
 
     private var headerView: some View {
         HStack {
@@ -363,7 +438,7 @@ struct UnifiedContentView: View {
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
-            .help("Đóng (Esc)")
+            .help("\(tr("close", lang: settings.language)) (Esc)")
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -426,5 +501,23 @@ struct UnifiedContentView: View {
         .foregroundStyle(.tertiary)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+}
+
+// MARK: - NSView Helper
+
+private struct NSViewAccessor: NSViewRepresentable {
+    var callback: (NSView) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { callback(view) }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+extension View {
+    func onNSView(_ callback: @escaping (NSView) -> Void) -> some View {
+        background(NSViewAccessor(callback: callback))
     }
 }

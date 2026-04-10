@@ -34,30 +34,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Accessibility
 
     private func checkAccessibilityPermissions() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        let trusted = AXIsProcessTrustedWithOptions(options)
-
-        if !trusted {
-            // Show a helpful alert
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                let alert = NSAlert()
-                alert.messageText = "QuickPaste cần quyền Accessibility"
-                alert.informativeText = """
-                    Để sử dụng QuickPaste, bạn cần cấp quyền Accessibility:
-                    
-                    1. Mở System Settings → Privacy & Security → Accessibility
-                    2. Bật QuickPaste trong danh sách
-                    3. Khởi động lại QuickPaste
-                    """
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "Mở System Settings")
-                alert.addButton(withTitle: "Để sau")
-
-                let response = alert.runModal()
-                if response == .alertFirstButtonReturn {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                }
-            }
+        if !AXIsProcessTrusted() {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
         }
     }
 
