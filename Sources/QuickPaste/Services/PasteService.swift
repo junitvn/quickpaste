@@ -8,7 +8,22 @@ class PasteService {
     /// so ClipboardMonitor can ignore it
     var isInternalPaste = false
 
+    /// Ensures the permission alert is only shown once per run instead
+    /// of spamming a prompt on every paste attempt.
+    private var hasShownPermissionAlert = false
+
     func paste(_ text: String) {
+        // Gate on Accessibility permission BEFORE touching the pasteboard,
+        // so we don't stomp on the user's clipboard when we can't paste.
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let trusted = AXIsProcessTrusted()
+        NSLog("[QuickPaste] paste target=\(frontmost?.bundleIdentifier ?? "nil") pid=\(frontmost?.processIdentifier ?? -1) axTrusted=\(trusted)")
+
+        if !trusted {
+            PermissionGuide.showAlertOnce(hasShown: &hasShownPermissionAlert)
+            return
+        }
+
         isInternalPaste = true
 
         // 1. Set text to pasteboard
@@ -19,7 +34,7 @@ class PasteService {
         // 2. Perform paste using the appropriate method for the active app
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
             guard let self = self else { return }
-            
+
             if self.isSimulatorActive() {
                 self.pasteIntoSimulator()
             } else {

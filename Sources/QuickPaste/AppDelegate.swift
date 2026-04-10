@@ -34,9 +34,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Accessibility
 
     private func checkAccessibilityPermissions() {
-        if !AXIsProcessTrusted() {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(options)
+        guard !AXIsProcessTrusted() else { return }
+        // Show the custom guide instead of the system prompt. The system
+        // prompt only adds the app to the list with the toggle OFF and
+        // doesn't tell the user they must relaunch, which is why users
+        // get stuck in a grant-loop with ad-hoc signed builds.
+        DispatchQueue.main.async {
+            PermissionGuide.showAlert()
         }
     }
 

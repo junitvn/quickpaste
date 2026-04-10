@@ -1,6 +1,14 @@
 import AppKit
 import SwiftUI
 
+// NSHostingView subclass that accepts the first mouse click immediately,
+// so buttons work inside a nonactivatingPanel without needing a prior click.
+class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+}
+
 class FloatingPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
@@ -92,6 +100,10 @@ class FloatingPanelController: ObservableObject {
 
     private var panel: FloatingPanel?
     private var eventMonitor: Any?
+    /// The app that was frontmost when the panel opened. We restore focus
+    /// to it before pasting so Cmd+V reliably lands on the correct target,
+    /// even if our own app was briefly activated during panel interaction.
+    private var previousFrontmostApp: NSRunningApplication?
 
     @Published var isVisible = false
 
@@ -106,6 +118,14 @@ class FloatingPanelController: ObservableObject {
     func show(focus: FocusSection) {
         hide()
 
+        // Capture whichever app currently owns focus so we can paste into
+        // it later. Skip ourselves in case the hotkey fires while our own
+        // settings window happens to be active.
+        let currentFrontmost = NSWorkspace.shared.frontmostApplication
+        if currentFrontmost?.bundleIdentifier != Bundle.main.bundleIdentifier {
+            previousFrontmostApp = currentFrontmost
+        }
+
         let panelWidth: CGFloat = 340
         let panelHeight: CGFloat = 440
 
@@ -119,16 +139,16 @@ class FloatingPanelController: ObservableObject {
                 self?.hide()
             },
             onPaste: { [weak self] text in
-                self?.hide()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    PasteService.shared.paste(text)
-                }
+                guard let self = self else { return }
+                let targetApp = self.previousFrontmostApp
+                self.hide()
+                self.pasteAfterRestoringFocus(text: text, targetApp: targetApp)
             }
         )
         .environmentObject(AppSettings.shared)
         .environmentObject(ClipboardMonitor.shared)
 
-        panel.contentView = NSHostingView(rootView: contentView)
+        panel.contentView = ClickThroughHostingView(rootView: contentView)
         panel.showAtMouseLocation()
 
         self.panel = panel
@@ -150,6 +170,43 @@ class FloatingPanelController: ObservableObject {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
+        }
+    }
+
+    /// Re-activates the target app, waits for the activation to actually
+    /// take effect, then triggers the paste. Clicking inside a
+    /// nonActivatingPanel packaged as a .app bundle can briefly steal
+    /// focus to our own process, which would cause Cmd+V to be swallowed.
+    private func pasteAfterRestoringFocus(text: String, targetApp: NSRunningApplication?) {
+        guard let targetApp = targetApp else {
+            // No captured target: fall back to a small delay and paste.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                PasteService.shared.paste(text)
+            }
+            return
+        }
+
+        // Explicitly re-activate the target app. If panel interaction never
+        // stole focus this is a no-op; if it did, this restores it.
+        targetApp.activate(options: [])
+
+        // Poll briefly until the target is actually frontmost (max ~300ms),
+        // then paste. This is far more reliable than a fixed delay.
+        let deadline = Date().addingTimeInterval(0.3)
+        func waitAndPaste() {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == targetApp.processIdentifier {
+                PasteService.shared.paste(text)
+            } else if Date() < deadline {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                    waitAndPaste()
+                }
+            } else {
+                // Timed out: paste anyway, best effort.
+                PasteService.shared.paste(text)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            waitAndPaste()
         }
     }
 }
