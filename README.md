@@ -39,6 +39,16 @@ chmod +x build_app.sh
 
 A fully standalone `QuickPaste.app` will be generated in your current folder. You can drag and drop it into your `Applications` folder!
 
+### Download from GitHub Releases
+
+1. Download the latest `QuickPaste.app.zip` from [Releases](../../releases).
+2. Unzip and move `QuickPaste.app` to `/Applications`.
+3. Since the app is not notarized, macOS will show **"QuickPaste is damaged and can't be opened"**. To fix this, open Terminal and run:
+   ```bash
+   xattr -cr /Applications/QuickPaste.app
+   ```
+4. Open the app normally.
+
 ## Requirements
 
 - **Permissions**: The app requires macOS Accessibility Permissions (`System Preferences > Privacy & Security > Accessibility`) to paste text and register global hotkeys. 
