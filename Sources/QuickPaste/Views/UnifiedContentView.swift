@@ -166,9 +166,18 @@ struct UnifiedContentView: View {
     
     private func handleKeyEvent(notification: Notification) {
         guard let keyCode = notification.userInfo?["keyCode"] as? UInt16 else { return }
+
+        // Ctrl+<number> quick-select across quick actions then list items.
+        if notification.userInfo?["control"] as? Bool == true {
+            if let number = FloatingPanel.number(for: keyCode) {
+                selectByNumber(number)
+            }
+            return
+        }
+
         let items = filteredItems
         guard !items.isEmpty else { return }
-        
+
         if let currentIdx = items.firstIndex(where: { $0.id == selectedItemID }) {
             if keyCode == 125 { // Down arrow
                 isSearchFocused = false
@@ -210,6 +219,43 @@ struct UnifiedContentView: View {
         }
     }
 
+    // MARK: - Numbered Quick-Select (Ctrl+<number>)
+
+    /// Highest number reachable via Ctrl+<digit>.
+    private static let maxQuickSelect = 9
+
+    /// 1-based number for a quick action, or nil if past the digit limit.
+    private func number(forQuickActionAt index: Int) -> Int? {
+        let n = index + 1
+        return n <= Self.maxQuickSelect ? n : nil
+    }
+
+    /// 1-based number for a list item, continuing after the quick actions.
+    private func number(forItemAt index: Int) -> Int? {
+        let n = settings.quickActions.count + index + 1
+        return n <= Self.maxQuickSelect ? n : nil
+    }
+
+    /// Triggers paste for the item assigned to the given 1-based number.
+    private func selectByNumber(_ number: Int) {
+        let qaCount = settings.quickActions.count
+        if number <= qaCount {
+            handleQuickAction(settings.quickActions[number - 1])
+        } else {
+            let itemIndex = number - qaCount - 1
+            let items = filteredItems
+            if itemIndex >= 0 && itemIndex < items.count {
+                let item = items[itemIndex]
+                selectedItemID = item.id
+                handleAction(for: item)
+            }
+        }
+    }
+
+    private func handleQuickAction(_ qa: QuickAction) {
+        handleAction(for: UnifiedItem(id: "qa_\(qa.id)", title: qa.name, subtitle: "", content: qa.content, icon: "bolt.fill", isSnippet: true))
+    }
+
     private func handleAction(for item: UnifiedItem) {
         if !item.isSnippet {
             // Move clipboard item to top without deleting
@@ -229,7 +275,7 @@ struct UnifiedContentView: View {
     private var quickActionsRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(settings.quickActions) { qa in
+                ForEach(Array(settings.quickActions.enumerated()), id: \.element.id) { index, qa in
                     Text(qa.icon)
                         .font(.system(size: 24))
                         .frame(width: 44, height: 44)
@@ -240,15 +286,38 @@ struct UnifiedContentView: View {
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         )
+                        .overlay(alignment: .bottomTrailing) {
+                            if let n = number(forQuickActionAt: index) {
+                                numberBadge(n)
+                                    .padding(2)
+                            }
+                        }
                         .onTapGesture {
-                            handleAction(for: UnifiedItem(id: "qa_\(qa.id)", title: qa.name, subtitle: "", content: qa.content, icon: "bolt.fill", isSnippet: true))
+                            handleQuickAction(qa)
                         }
                 }
             }
             .padding(.horizontal, 12)
             .padding(.trailing, 4)
+            .padding(.top, 4)
             .padding(.bottom, 8)
         }
+    }
+
+    /// Subtle keycap showing the Ctrl+<number> shortcut for an item.
+    private func numberBadge(_ number: Int, selected: Bool = false) -> some View {
+        Text("\(number)")
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(selected ? Color.white.opacity(0.9) : Color.secondary)
+            .frame(width: 17, height: 17)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(selected ? Color.white.opacity(0.18) : Color.primary.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(selected ? Color.white.opacity(0.25) : Color.primary.opacity(0.08), lineWidth: 0.5)
+            )
     }
     
     private var snippetsSection: some View {
@@ -309,6 +378,7 @@ struct UnifiedContentView: View {
         let isSelected = selectedItemID == item.id
         let isHovered = hoveredItemID == item.id
         let showActions = !item.isSnippet && (isSelected || isHovered)
+        let itemNumber = filteredItems.firstIndex(of: item).flatMap { number(forItemAt: $0) }
 
         return HStack(alignment: .center, spacing: 4) {
             // --- Left: tappable area to paste ---
@@ -317,6 +387,9 @@ struct UnifiedContentView: View {
                 handleAction(for: item)
             } label: {
                 HStack(alignment: .center, spacing: 8) {
+                    if let n = itemNumber {
+                        numberBadge(n, selected: isSelected)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
                             .font(.system(size: 13, weight: .medium))
@@ -484,7 +557,14 @@ struct UnifiedContentView: View {
                 .font(.system(size: 10))
             Text(tr("select", lang: settings.language))
                 .font(.system(size: 10))
-            
+
+            Spacer().frame(width: 12)
+
+            Text("⌃1-9")
+                .font(.system(size: 10, weight: .semibold))
+            Text(tr("quick", lang: settings.language))
+                .font(.system(size: 10))
+
             Spacer()
 
             Button {

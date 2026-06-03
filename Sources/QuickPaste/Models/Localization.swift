@@ -58,6 +58,7 @@ class Localization {
         "empty": [.vi: "Trống", .en: "Empty"],
         "move": [.vi: "Di chuyển", .en: "Move"],
         "select": [.vi: "Chọn", .en: "Select"],
+        "quick": [.vi: "Chọn nhanh", .en: "Quick"],
         "settings": [.vi: "Cài đặt", .en: "Settings"],
         "error_no_display": [.vi: "Vui lòng bật hiển thị Snippets hoặc Clipboard", .en: "Please enable Snippets or Clipboard"],
         "clear_clipboard": [.vi: "Xoá lịch sử", .en: "Clear History"],

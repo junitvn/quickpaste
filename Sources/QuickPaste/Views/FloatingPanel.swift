@@ -43,6 +43,15 @@ class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// Keyboard keyCodes for the top-row digits 1...9, in order.
+    static let numberKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
+
+    /// Maps a digit keyCode to its 1-based number (1...9), or nil.
+    static func number(for keyCode: UInt16) -> Int? {
+        guard let idx = numberKeyCodes.firstIndex(of: keyCode) else { return nil }
+        return idx + 1
+    }
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown {
             if event.keyCode == 53 { // Escape
@@ -56,6 +65,18 @@ class FloatingPanel: NSPanel {
                     userInfo: ["keyCode": event.keyCode]
                 )
                 return // Swallow the event so TextField doesn't move its internal text cursor vertically
+            } else if event.modifierFlags.contains(.control),
+                      FloatingPanel.numberKeyCodes.contains(event.keyCode) {
+                // Forward Ctrl+<1-9> as a quick-select shortcut
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("FloatingPanelKeyDown"),
+                    object: nil,
+                    userInfo: [
+                        "keyCode": event.keyCode,
+                        "control": true
+                    ]
+                )
+                return // Swallow so it doesn't reach the TextField
             }
         }
         super.sendEvent(event)
