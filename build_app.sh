@@ -5,7 +5,7 @@ set -e
 
 APP_NAME="QuickPaste"
 BUNDLE_ID="com.lamnguyen.quickpaste"
-VERSION="1.2.0"
+VERSION="1.3.0"
 BUILD_DIR=".build/release"
 APP_DIR="${APP_NAME}.app"
 ZIP_NAME="${APP_NAME}-${VERSION}.zip"

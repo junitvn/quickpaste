@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ServiceManagement
 
 class AppSettings: ObservableObject {
     static let shared = AppSettings()
@@ -29,7 +30,10 @@ class AppSettings: ObservableObject {
     }
 
     @Published var launchAtLogin: Bool {
-        didSet { UserDefaults.standard.set(launchAtLogin, forKey: launchAtLoginKey) }
+        didSet {
+            UserDefaults.standard.set(launchAtLogin, forKey: launchAtLoginKey)
+            Self.applyLaunchAtLogin(launchAtLogin)
+        }
     }
 
     @Published var showSnippets: Bool {
@@ -52,8 +56,9 @@ class AppSettings: ObservableObject {
         let savedMax = UserDefaults.standard.integer(forKey: maxClipboardKey)
         self.maxClipboardHistory = savedMax > 0 ? savedMax : 5 // Default changed to 5
 
-        // Load launch at login
-        self.launchAtLogin = UserDefaults.standard.bool(forKey: launchAtLoginKey)
+        // Source of truth is the system's login item registry, not UserDefaults,
+        // so this stays in sync if the user removes it via System Settings.
+        self.launchAtLogin = SMAppService.mainApp.status == .enabled
 
         // Load visibility toggles
         if UserDefaults.standard.object(forKey: showSnippetsKey) == nil {
@@ -75,6 +80,22 @@ class AppSettings: ObservableObject {
         // Now safe to call self methods
         self.snippets = loadSnippets()
         self.quickActions = loadQuickActions()
+    }
+
+    // MARK: - Launch at Login
+
+    private static func applyLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                if SMAppService.mainApp.status != .enabled {
+                    try SMAppService.mainApp.register()
+                }
+            } else if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            print("[QuickPaste] Failed to update launch at login: \(error)")
+        }
     }
 
     // MARK: - Snippets Persistence

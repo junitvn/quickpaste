@@ -519,6 +519,8 @@ struct SettingsView: View {
             }
 
             Section(tr("info", lang: settings.language)) {
+                Toggle(tr("launch_at_login", lang: settings.language), isOn: $settings.launchAtLogin)
+
                 HStack {
                     Text(tr("language", lang: settings.language))
                     Spacer()
@@ -535,7 +537,7 @@ struct SettingsView: View {
                     Text("QuickPaste")
                         .font(.system(size: 13, weight: .semibold))
                     Spacer()
-                    Text("v1.2.0")
+                    Text("v1.3.0")
                         .foregroundStyle(.secondary)
                 }
             }

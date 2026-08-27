@@ -43,6 +43,8 @@ class Localization {
         "open_snippets": [.vi: "Mở Snippets:", .en: "Open Snippets:"],
         "open_clipboard": [.vi: "Mở Clipboard:", .en: "Open Clipboard:"],
 
+        "launch_at_login": [.vi: "Khởi động cùng macOS", .en: "Launch at login"],
+
         "display": [.vi: "Hiển thị", .en: "Display"],
         "show_snippets": [.vi: "Hiện Snippets trong Popup", .en: "Show Snippets in Popup"],
         "show_clipboard": [.vi: "Hiện Clipboard trong Popup", .en: "Show Clipboard in Popup"],
