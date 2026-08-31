@@ -13,6 +13,31 @@ import ApplicationServices
 /// This helper guides the user through exactly that flow instead of
 /// spamming the system prompt every time a paste is attempted.
 enum PermissionGuide {
+    /// `AXIsProcessTrusted()` can read stale immediately after the grant is
+    /// made — `tccd` needs a brief moment to propagate it to the process
+    /// asking. This shows up right after "Quit & Relaunch", and even more
+    /// often on a login-item launch, which starts earlier in the boot/login
+    /// sequence than an interactive launch. Retry briefly on the main queue
+    /// before treating a `false` reading as final, instead of immediately
+    /// prompting the user to re-grant a permission they already granted.
+    static func isTrustedWithRetry(
+        attempts: Int = 6,
+        interval: TimeInterval = 0.25,
+        completion: @escaping (Bool) -> Void
+    ) {
+        if AXIsProcessTrusted() {
+            completion(true)
+            return
+        }
+        guard attempts > 1 else {
+            completion(false)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+            isTrustedWithRetry(attempts: attempts - 1, interval: interval, completion: completion)
+        }
+    }
+
     static func showAlertOnce(hasShown: inout Bool) {
         guard !hasShown else { return }
         hasShown = true
@@ -70,7 +95,7 @@ enum PermissionGuide {
         task.launchPath = "/bin/sh"
         task.arguments = [
             "-c",
-            "sleep 0.5; /usr/bin/open \"\(bundleURL.path)\""
+            "sleep 1.0; /usr/bin/open \"\(bundleURL.path)\""
         ]
         try? task.run()
         NSApp.terminate(nil)

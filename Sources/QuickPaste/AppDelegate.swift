@@ -34,12 +34,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Accessibility
 
     private func checkAccessibilityPermissions() {
-        guard !AXIsProcessTrusted() else { return }
-        // Show the custom guide instead of the system prompt. The system
-        // prompt only adds the app to the list with the toggle OFF and
-        // doesn't tell the user they must relaunch, which is why users
-        // get stuck in a grant-loop with ad-hoc signed builds.
-        DispatchQueue.main.async {
+        // Retry briefly instead of acting on a single reading — right after
+        // a login-item launch (which starts earlier in the boot/login
+        // sequence) `AXIsProcessTrusted()` can spuriously read false for a
+        // moment even though the permission was already granted.
+        PermissionGuide.isTrustedWithRetry { trusted in
+            guard !trusted else { return }
+            // Show the custom guide instead of the system prompt. The system
+            // prompt only adds the app to the list with the toggle OFF and
+            // doesn't tell the user they must relaunch, which is why users
+            // get stuck in a grant-loop with ad-hoc signed builds.
             PermissionGuide.showAlert()
         }
     }

@@ -15,15 +15,26 @@ class PasteService {
     func paste(_ text: String) {
         // Gate on Accessibility permission BEFORE touching the pasteboard,
         // so we don't stomp on the user's clipboard when we can't paste.
+        //
+        // Right after the user grants access (and clicks "Quit & Relaunch"),
+        // `AXIsProcessTrusted()` can still read stale false for a moment
+        // while tccd propagates the grant to the new process — retry
+        // briefly instead of failing the very first paste after enabling.
         let frontmost = NSWorkspace.shared.frontmostApplication
-        let trusted = AXIsProcessTrusted()
-        NSLog("[QuickPaste] paste target=\(frontmost?.bundleIdentifier ?? "nil") pid=\(frontmost?.processIdentifier ?? -1) axTrusted=\(trusted)")
+        PermissionGuide.isTrustedWithRetry { [weak self] trusted in
+            guard let self = self else { return }
+            NSLog("[QuickPaste] paste target=\(frontmost?.bundleIdentifier ?? "nil") pid=\(frontmost?.processIdentifier ?? -1) axTrusted=\(trusted)")
 
-        if !trusted {
-            PermissionGuide.showAlertOnce(hasShown: &hasShownPermissionAlert)
-            return
+            if !trusted {
+                PermissionGuide.showAlertOnce(hasShown: &self.hasShownPermissionAlert)
+                return
+            }
+
+            self.performPaste(text)
         }
+    }
 
+    private func performPaste(_ text: String) {
         isInternalPaste = true
 
         // 1. Set text to pasteboard
